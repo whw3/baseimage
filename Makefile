@@ -1,10 +1,10 @@
-include env_make
+#include env_make
 SHELL := /bin/bash
 NS = whw3
 VERSION ?= latest
 REPO = baseimage
 
-.PHONY: alpine rpi buildpack-deps build push release clean
+.PHONY: alpine rpi buildpack-deps all build push release clean
 
 alpine:
 	./build.sh alpine
@@ -18,7 +18,7 @@ buildpack-deps:
 all: 
 	./build.sh all
 	
-build:
+build: alpine rpi buildpack-deps
 	./build.sh all
 
 push:
@@ -31,7 +31,7 @@ push:
 release: build
 	make push -e VERSION=$(VERSION)
 
-default: build
+default: all
 
 clean: 
 	./clean.sh

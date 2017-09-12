@@ -1,7 +1,7 @@
 #/bin/bash
 clear
 BASEDIR=$(cd "$( dirname "$0" )" && pwd)
-BASE_APPS="bash bash-completion nano git tzdata"
+BASE_APPS="wget bash bash-completion nano git tzdata"
 echo "BASEDIR = $BASEDIR" > env_make
 if  [[ -z "$(which jq)" ]]; then
     whiptail --title "Missing Required Application" --yesno "jq is required for this script to function.\nShould I install it for you?" 8 48 3>&1 1>&2 2>&3 || exit 1;
@@ -44,7 +44,7 @@ echo "export TZ=\"$TZ\"" > TIMEZONE
 BASE_XTRA=""
 while [ -z "$BASE_XTRA" ]
 do
-    [[ -r BASE_XTRA ]] && source BASE_XTRA || BASE_XTRA="wget curl ca-certificates"
+    [[ -r BASE_XTRA ]] && source BASE_XTRA || BASE_XTRA="curl ca-certificates"
     BASE_XTRA=$(whiptail --inputbox "Default Applications" 8 78 "$BASE_XTRA" --title "WHW3 BaseImage Builder" 3>&1 1>&2 2>&3) || exit 1;
 done
 echo "export BASE_XTRA=\"$BASE_XTRA\"" > BASE_XTRA
@@ -152,7 +152,11 @@ echo "Refreshing resin/rpi-raspbian..."
 #docker rmi -f resin/rpi-raspbian
 docker pull resin/rpi-raspbian:latest
 REPO="whw3/rpi"
-cat << EOF > "$REPO/Dockerfile"
+BUILD="whw3/rpi/build.sh"
+cat << EOB > $BUILD
+#!/bin/bash
+cd $BASEDIR/$REPO
+cat << EOF > "Dockerfile"
 FROM resin/rpi-raspbian
 COPY rootfs /
 RUN apt-install $BASE_APPS $BASE_XTRA gnupg2 dirmngr
@@ -160,10 +164,6 @@ RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && exit 0 ; exit 1
 CMD ["/bin/bash"]
 EOF
 
-BUILD="whw3/rpi/build.sh"
-cat << EOB > $BUILD
-#!/bin/bash
-cd $BASEDIR/$REPO
 docker build -t whw3/rpi:latest -t whw3/baseimage:rpi .
 
 cat << EOF > Dockerfile
@@ -206,6 +206,7 @@ cd ../scm
 docker build -t whw3/buildpack-deps:rpi-scm -t whw3/buildpack-deps:scm .
 cd ../
 docker build -t whw3/buildpack-deps:rpi .
+mv Dockerfile Dockerfile~
 
 declare -a tags=("-curl" "-scm" "")
 for tag in "\${tags[@]}"
@@ -224,5 +225,6 @@ EOF
 done
 docker tag whw3/buildpack-deps:latest whw3/baseimage:buildpack-deps
 rm Dockerfile
+mv Dockerfile~ Dockerfile
 EOB
 chmod +x $BUILD
