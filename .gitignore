@@ -4,6 +4,7 @@ s6-tags.json
 latest-releases.yaml
 TIMEZONE
 BASE_XTRA
+env_make
 whw3
 buildpack-deps
 rootfs/etc/timezone
