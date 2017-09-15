@@ -2,14 +2,19 @@
 clear
 BASEDIR=$(cd "$( dirname "$0" )" && pwd)
 BASE_APPS="wget bash bash-completion nano git tzdata"
+ALPINE_APPS="gnupg"
+RPI_APPS="gnupg2 dirmngr"
 echo "BASEDIR = $BASEDIR" > env_make
+###
+### Check Pre-requistites
+###
 if  [[ -z "$(which jq)" ]]; then
     whiptail --title "Missing Required Application" --yesno "jq is required for this script to function.\nShould I install it for you?" 8 48 3>&1 1>&2 2>&3 || exit 1;
     apt-get update
     apt-get install -y jq
 fi
 if  [[ -z "$(which gpg)" ]]; then
-    whiptail --title "Missing Required Application" --yesno "jq is required for this script to function.\nShould I install it for you?" 8 48 3>&1 1>&2 2>&3 || exit 1;
+    whiptail --title "Missing Required Application" --yesno "gpg required for this script to function.\nShould I install it for you?" 8 48 3>&1 1>&2 2>&3 || exit 1;
     apt-get update
     apt-get install -y gpgv2
 fi
@@ -21,6 +26,9 @@ if  [[ -z "$(which docker-compose)" ]]; then
     pip install docker-compose
     pip install -U requests==2.11.1
 fi
+###
+### Set Timezone
+###
 TZ=""
 while [ -z "$TZ" ]
 do
@@ -28,19 +36,19 @@ do
         source TIMEZONE
     elif [[ -r /etc/timezone ]]; then
         TZ=$(</etc/timezone)
-    else    
+    else
         TZ="America/Chicago"
     fi
-    
-    TZ=$(whiptail --inputbox "Default timezone" 8 78 "$TZ" --title "WHW3 BaseImage Builder" 3>&1 1>&2 2>&3)
-    exitstatus=$?; if [ $exitstatus = 1 ]; then exit 1; fi
+    TZ=$(whiptail --inputbox "Default timezone" 8 78 "$TZ" --title "WHW3 BaseImage Builder" 3>&1 1>&2 2>&3) || exit 1
     if [[ "$(grep -c -w "$TZ" zone.csv )" != "1" ]]; then
         TIMEZONES=( $(cut -d, -f3 < zone.csv | sort | sed 's/\"//g' | awk '!/^ / && NF {print $1 " [] off"}') )
         TZ=$(whiptail --title "Timezone Config" --radiolist --separate-output "Select Timezone" 20 48 12 "${TIMEZONES[@]}" 3>&1 1>&2 2>&3) || exit 1;
     fi
 done
 echo "export TZ=\"$TZ\"" > TIMEZONE
-
+###
+### Set User-defined Apps
+###
 BASE_XTRA=""
 while [ -z "$BASE_XTRA" ]
 do
@@ -48,19 +56,17 @@ do
     BASE_XTRA=$(whiptail --inputbox "Default Applications" 8 78 "$BASE_XTRA" --title "WHW3 BaseImage Builder" 3>&1 1>&2 2>&3) || exit 1;
 done
 echo "export BASE_XTRA=\"$BASE_XTRA\"" > BASE_XTRA
-# check for latest s6-overlay and download
+###
+### Check for latest s6-overlay and download
+###
 [[ -f s6-tags.json ]] && rm s6-tags.json
 wget -qO s6-tags.json https://api.github.com/repos/just-containers/s6-overlay/tags
 eval "$(jq -r '.[0] | @sh "S6_VERSION=\(.name)"' s6-tags.json )"
 [[ ! -f s6-overlay-$S6_VERSION-armhf.tar.gz ]] && \
     wget -O "s6-overlay-$S6_VERSION-armhf.tar.gz" "https://github.com/just-containers/s6-overlay/releases/download/$S6_VERSION/s6-overlay-armhf.tar.gz"
-
-#check alpine versions, then download/verify checksums and signature
-if [[ ! $(gpg --fingerprint 293ACD0907D9495A 2>/dev/null) ]] ; then
-    echo "Importing NCOPA key"
-    gpg --import ncopa.asc
-fi
-
+###
+### Setup rootfs
+###
 mkdir -p whw3/{alpine,rpi,buildpack-deps}
 echo "$TZ" > rootfs/etc/timezone
 cp -a rootfs whw3/alpine
@@ -74,18 +80,24 @@ cp -a 01-docker-entrypoint.sh whw3/alpine/rootfs/etc/cont-init.d
 cp -a 01-docker-entrypoint.sh whw3/rpi
 cp -a 01-docker-entrypoint.sh whw3/buildpack-deps
 chmod 0700 tzconfig*
-chmod 0700 *-install
+chmod 0700 ./*-install
 cp -a tzconfig.alpine whw3/alpine/rootfs/usr/local/bin/tzconfig
 cp -a apk-install whw3/alpine/rootfs/usr/local/bin/
 cp -a tzconfig.rpi whw3/rpi/rootfs/usr/local/bin/tzconfig
 cp -a apt-install whw3/rpi/rootfs/usr/local/bin/
-
+###
+### Configure Alpine
+###
+if [[ ! $(gpg --fingerprint 293ACD0907D9495A 2>/dev/null) ]] ; then
+    echo "Importing NCOPA key"
+    gpg --import ncopa.asc
+fi
 BUILD="whw3/alpine/build.sh"
 echo "#!/bin/bash" > $BUILD
 NCOPA_FPR=$( gpg --with-colons --fingerprint 293ACD0907D9495A 2>/dev/null | grep fpr | cut -d ':' -f 10 )
 TARGET_LIST=($(jq -r '.[]| "\(.tag)"' alpine_versions.json))
 MIRROR="http://dl-cdn.alpinelinux.org/alpine"
-PACKAGES="alpine-baselayout,alpine-keys,apk-tools,libc-utils,${BASE_APPS// /,},tzdata,newt"
+PACKAGES="alpine-baselayout,alpine-keys,apk-tools,libc-utils,${BASE_APPS// /,},${ALPINE_APPS// /,}"
 echo "${TARGET_LIST[@]}"
 for RELEASE in "${TARGET_LIST[@]}"; do
     BRANCH="$(jq -r '.[]|select(.tag == "'$RELEASE'")|.branch' alpine_versions.json)"
@@ -93,7 +105,7 @@ for RELEASE in "${TARGET_LIST[@]}"; do
     wget -q "https://nl.alpinelinux.org/alpine/$BRANCH/releases/armhf/latest-releases.yaml"
     ALPINE_VERSION=$(./yaml2json.py < latest-releases.yaml | jq -r '.[]|select(.flavor == "alpine-minirootfs")|.version')
     ALPINE_BRANCH=$(./yaml2json.py < latest-releases.yaml | jq -r '.[]|select(.flavor == "alpine-minirootfs")|.branch')
-    
+
     [[ ! -f alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz ]] && \
         wget "https://nl.alpinelinux.org/alpine/$ALPINE_BRANCH/releases/armhf/alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz"
 
@@ -121,8 +133,8 @@ for RELEASE in "${TARGET_LIST[@]}"; do
     fi
     REPO="whw3/alpine/$ALPINE_BRANCH"
     mkdir -p "$REPO"
-    cp -a "alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz" "$REPO/alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz"
-    cp -a "s6-overlay-$S6_VERSION-armhf.tar.gz" "$REPO/s6-overlay-$S6_VERSION-armhf.tar.gz"
+    cp -a "alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz" "$REPO"
+    cp -a "s6-overlay-$S6_VERSION-armhf.tar.gz" "$REPO"
     cp -a "whw3/alpine/rootfs" "$REPO"
     cat << EOF > "$REPO/options"
 export RELEASE="$ALPINE_BRANCH"
@@ -135,7 +147,7 @@ EOF
 FROM scratch
 ADD alpine-minirootfs-$ALPINE_VERSION-armhf.tar.gz /
 COPY rootfs /
-RUN apk-install $BASE_APPS $BASE_XTRA gnupg
+RUN apk-install $BASE_APPS $BASE_XTRA $ALPINE_APPS
 RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && exit 0 ; exit 1
 RUN apk del tzdata
 ENTRYPOINT ["/init"]
@@ -147,11 +159,14 @@ done
 echo "docker tag whw3/alpine:$ALPINE_VERSION whw3/baseimage:alpine" >> $BUILD
 rm -rf "$BASEDIR/whw3/alpine/rootfs"
 chmod +x $BUILD
-
+###
+### Configure Raspbian
+###
 echo "Refreshing resin/rpi-raspbian..."
 #docker rmi -f resin/rpi-raspbian
 docker pull resin/rpi-raspbian:latest
 REPO="whw3/rpi"
+### build ###
 BUILD="whw3/rpi/build.sh"
 cat << EOB > $BUILD
 #!/bin/bash
@@ -159,7 +174,7 @@ cd $BASEDIR/$REPO
 cat << EOF > "Dockerfile"
 FROM resin/rpi-raspbian
 COPY rootfs /
-RUN apt-install $BASE_APPS $BASE_XTRA gnupg2 dirmngr
+RUN apt-install $BASE_APPS $BASE_XTRA $RPI_APPS
 RUN cp /usr/share/zoneinfo/$TZ /etc/localtime && exit 0 ; exit 1
 CMD ["/bin/bash"]
 EOF
@@ -173,28 +188,29 @@ COPY 01-docker-entrypoint.sh /etc/cont-init.d
 RUN chmod +x /etc/cont-init.d/01-docker-entrypoint.sh
 ENTRYPOINT ["/init"]
 EOF
-docker build -t whw3/rpi:s6 -t whw3/rpi-s6 -t whw3/baseimage:rpi-s6 .
+docker build -t whw3/rpi:s6 -t whw3/rpi-s6:latest -t whw3/baseimage:rpi-s6 .
 EOB
 chmod +x $BUILD
-
-REPO="buildpack-deps"
+###
+### Configure Buildpack-deps
+###
 cd "$BASEDIR"
 echo "BASEDIR:$BASEDIR"
 # Always remove and refresh
+REPO="buildpack-deps"
 [[ -d  "$BASEDIR/$REPO" ]] &&  \
   rm -rf "$BASEDIR/$REPO"
+git clone https://github.com/docker-library/buildpack-deps.git
 
 REPO="whw3/buildpack-deps"
-
-git clone https://github.com/docker-library/buildpack-deps.git
-cp -a buildpack-deps/jessie/* $REPO
+cp -a buildpack-deps/jessie/* "$REPO"
 
 ### patch ###
-
 cd "$BASEDIR/$REPO"
 sed -i 's_FROM debian:jessie_FROM whw3/rpi_' ./curl/Dockerfile
 sed -i 's/^RUN apt-get update \&\& apt-get install/RUN apt-get update \&\& apt-get upgrade \&\& apt-get install/' ./curl/Dockerfile
 find . -name Dockerfile -exec sed -i 's_FROM buildpack-deps:jessie_FROM whw3/buildpack-deps:rpi_' {} +
+
 ### build ###
 BUILD="$REPO/build.sh"
 cd "$BASEDIR"
