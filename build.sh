@@ -1,9 +1,12 @@
 #/bin/bash
-#clear
+clear
 BASEDIR=$(cd "$( dirname "$0" )" && pwd)
-BASEIMAGE_TARGET_LIST=()
-#buildDate=$(date -Is)
-#echo $BASEDIR $buildDate
+buildDate=$(date -Is)
+echo $BASEDIR $buildDate
+[[ -z "$@" ]] \
+&& BASEIMAGE_TARGET_LIST=('alpine' 'rpi' 'buildpack-deps') \
+|| BASEIMAGE_TARGET_LIST=();
+
 while [[ $# -gt 0 ]]; do
     key="$1"
     case "$key" in

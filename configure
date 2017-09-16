@@ -69,6 +69,7 @@ eval "$(jq -r '.[0] | @sh "S6_VERSION=\(.name)"' s6-tags.json )"
 ###
 mkdir -p whw3/{alpine,rpi,buildpack-deps}
 echo "$TZ" > rootfs/etc/timezone
+mkdir -p rootfs/usr/local/bin
 cp -a rootfs whw3/alpine
 cp -a rootfs whw3/rpi
 tar xz -C "whw3/alpine/rootfs" -f "s6-overlay-$S6_VERSION-armhf.tar.gz"
