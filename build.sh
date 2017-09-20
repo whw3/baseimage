@@ -1,5 +1,4 @@
-#/bin/bash
-clear
+#!/bin/bash
 BASEDIR=$(cd "$( dirname "$0" )" && pwd)
 buildDate=$(date -Is)
 echo $BASEDIR $buildDate
@@ -36,4 +35,5 @@ for TARGET in "${BASEIMAGE_TARGET_LIST[@]}"
 do
     cd "$BASEDIR/whw3/$TARGET"
     ./build.sh
+    touch "$BASEDIR/$TARGET"
 done

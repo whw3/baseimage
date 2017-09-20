@@ -1,4 +1,5 @@
 *~
+.*~
 *.tar.gz*
 s6-tags.json
 latest-releases.yaml
@@ -6,7 +7,10 @@ TIMEZONE
 BASE_XTRA
 env_make
 whw3
-buildpack-deps
+buildpack-deps.git
 rootfs/etc/timezone
 rootfs//usr/local/bin/tzconfig
 rootfs//usr/local/bin/*-install
+alpine
+rpi
+buildpack-deps
