@@ -191,6 +191,21 @@ RUN chmod +x /etc/cont-init.d/01-docker-entrypoint.sh
 ENTRYPOINT ["/init"]
 EOF
 docker build -t whw3/rpi:s6 -t whw3/rpi-s6:latest -t whw3/baseimage:rpi-s6 .
+
+cat << EOF > Dockerfile
+FROM whw3/rpi
+RUN echo 'deb http://deb.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
+EOF
+
+docker build -t whw3/rpi:backports -t whw3/rpi-backports .
+
+cat << EOF > Dockerfile
+FROM whw3/rpi-s6
+RUN echo 'deb http://deb.debian.org/debian jessie-backports main' > /etc/apt/sources.list.d/backports.list
+EOF
+
+docker build -t whw3/rpi-s6:backports -t whw3/rpi-s6-backports .
+
 EOB
 chmod +x $BUILD
 ###
