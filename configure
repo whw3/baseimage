@@ -1,7 +1,7 @@
 #!/bin/bash
 clear
 BASEDIR=$(cd "$( dirname "$0" )" && pwd)
-BASE_APPS="wget bash bash-completion nano git tzdata"
+BASE_APPS="wget bash bash-completion nano git tzdata sed gawk"
 ALPINE_APPS="gnupg"
 RPI_APPS="gnupg2 dirmngr"
 echo "BASEDIR = $BASEDIR" > env_make
